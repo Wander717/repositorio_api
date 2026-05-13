@@ -7,6 +7,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -36,7 +37,7 @@ public class TemaDAO {
                 t.setQtd_max_aulas(rs.getInt("qtd_max_aulas"));
                 t.setPrioridade(rs.getInt("prioridade"));
                 t.setEh_opcional(rs.getInt("eh_opcional"));
-                t.setDeleted_at(rs.getTimestamp("deleted_at"));
+                t.setDeleted_at(rs.getObject("deleted_at", LocalDate.class));
 
                 lista.add(t);
             }
@@ -72,7 +73,7 @@ public class TemaDAO {
                         rs.getInt("qtd_max_aulas"),
                         rs.getInt("prioridade"),
                         rs.getInt("eh_opcional"),
-                        rs.getTimestamp("deleted_at")
+                        rs.getObject("deleted_at", LocalDate.class)
                 );
             }
         } catch (SQLException e) {

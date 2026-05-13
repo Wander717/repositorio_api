@@ -1,6 +1,6 @@
 package org.example.demo3.entity;
 
-import java.util.Date;
+import java.time.LocalDate;
 
 public class Tema {
     private Integer id_tema;
@@ -12,14 +12,14 @@ public class Tema {
     private Integer qtd_max_aulas;
     private Integer prioridade;
     private Integer eh_opcional;
-    private Date deleted_at;
+    private LocalDate deleted_at;
 
     public Tema() {
     }
 
     public Tema(Integer id_tema, Integer disciplina_id, Integer semestre_letivo_id, String nome,
                 Integer eh_avaliacao, Integer qtd_min_aulas, Integer qtd_max_aulas,
-                Integer prioridade, Integer eh_opcional, Date deleted_at) {
+                Integer prioridade, Integer eh_opcional, LocalDate deleted_at) {
         this.id_tema = id_tema;
         this.disciplina_id = disciplina_id;
         this.semestre_letivo_id = semestre_letivo_id;
@@ -105,11 +105,11 @@ public class Tema {
         this.eh_opcional = eh_opcional;
     }
 
-    public Date getDeleted_at() {
+    public LocalDate getDeleted_at() {
         return deleted_at;
     }
 
-    public void setDeleted_at(Date deleted_at) {
+    public void setDeleted_at(LocalDate deleted_at) {
         this.deleted_at = deleted_at;
     }
 }

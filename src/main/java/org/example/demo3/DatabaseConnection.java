@@ -19,4 +19,5 @@ public class DatabaseConnection {
             throw new SQLException("Driver JDBC não encontrado!", e);
         }
     }
+
 }

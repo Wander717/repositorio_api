@@ -26,7 +26,7 @@ public class MainShellController {
     @FXML private Label lblPerfilUsuario;
     @FXML private Label bannerReadOnly;
 
-    // ── Menu lateral ─────────────────────────────────────────────────────────
+    // ── Menu lateral ─────────────────────────────────────────────────
     @FXML private VBox menuLateral;
     @FXML private VBox secaoAdm;
     @FXML private VBox secaoCoordenador;

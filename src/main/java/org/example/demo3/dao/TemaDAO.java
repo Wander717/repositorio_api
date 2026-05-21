@@ -13,110 +13,175 @@ import java.util.List;
 
 public class TemaDAO {
 
-    public List<Tema> listarPorDisciplina(int idDisciplina) throws SQLException {
-        String sql = "SELECT * FROM tema WHERE disciplina_id = ? AND deleted_at IS NULL ORDER BY prioridade ASC";
-        Connection conn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
+    private Connection connection;
+        //FAZ A CONEXÃO;
+        public TemaDAO() {
+            this.connection = DatabaseConnection.getConnection();
+        }
 
-        List<Tema> lista = new ArrayList<>();
-        try {
-            conn = DatabaseConnection.getConnection();
-            ps = conn.prepareStatement(sql);
-            ps.setInt(1, idDisciplina);
+        //INSERE UM TEMA
+        public void inserirTema(Tema tema) {
+            String sql = """
+                INSERT INTO tema (
+                    disciplina_id,
+                    semestre_letivo_id,
+                    nome,
+                    eh_avaliacao,
+                    qtd_min_aulas,
+                    qtd_max_aulas,
+                    prioridade,
+                    eh_opcional) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""";
+            try(PreparedStatement stmt = connection.prepareStatement(sql)) {
+                stmt.setInt(1, tema.getDisciplina_id());
+                stmt.setInt(2, tema.getSemestre_letivo_id());
+                stmt.setString(3, tema.getNome());
+                stmt.setInt(4, tema.getEh_avaliacao());
+                stmt.setInt(5, tema.getQtd_min_aulas());
+                stmt.setInt(6, tema.getQtd_max_aulas());
+                stmt.setInt(7, tema.getPrioridade());
+                stmt.setInt(8, tema.getEh_opcional());
 
-            rs = ps.executeQuery();
-            while (rs.next()) {
-                Tema t = new Tema();
-                t.setId_tema(rs.getInt("id_tema"));
-                t.setDisciplina_id(rs.getInt("disciplina_id"));
-                t.setSemestre_letivo_id(rs.getInt("semestre_letivo_id"));
-                t.setNome(rs.getString("nome"));
-                t.setEh_avaliacao(rs.getInt("eh_avaliacao"));
-                t.setQtd_min_aulas(rs.getInt("qtd_min_aulas"));
-                t.setQtd_max_aulas(rs.getInt("qtd_max_aulas"));
-                t.setPrioridade(rs.getInt("prioridade"));
-                t.setEh_opcional(rs.getInt("eh_opcional"));
-                t.setDeleted_at(rs.getObject("deleted_at", LocalDate.class));
+                stmt.executeUpdate();
 
-                lista.add(t);
+                System.out.println("Tema inserido com sucesso!");
+
+            }catch (SQLException e) {
+                System.out.println("Erro ao inserir tema: " + e.getMessage());
+            }
+        }
+
+        //LISTA TODOS OS TEMAS
+    public List<Tema> listarTemas() {
+                List<Tema> temas = new ArrayList<>();
+                String sql = """
+                    SELECT * FROM tema
+                    WHERE deletado_em IS NULL
+                    """;
+                try (PreparedStatement stmt = connection.prepareStatement(sql);
+                    ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+
+                        Tema tema = new Tema();
+
+                        tema.setId_tema(rs.getInt("id_tema"));
+                        tema.setDisciplina_id(rs.getInt("disciplina_id"));
+                        tema.setSemestre_letivo_id(rs.getInt("semestre_letivo_id"));
+                        tema.setNome(rs.getString("nome"));
+                        tema.setEh_avaliacao(rs.getInt("eh_avaliacao"));
+                        tema.setQtd_min_aulas(rs.getInt("qtd_min_aulas"));
+                        tema.setQtd_max_aulas(rs.getInt("qtd_max_aulas"));
+                        tema.setPrioridade(rs.getInt("prioridade"));
+                        tema.setEh_opcional(rs.getInt("eh_opcional"));
+
+                        temas.add(tema);
+                    }
+                }catch (SQLException e) {
+                    System.out.println("Erro ao listar temas: " + e.getMessage());
+                }
+
+                return temas;
+        }
+
+
+
+    //LISTA OS TEMAS POR DISCIPLINA E SEMESTRE
+    public List<Tema> listarTemasPorDisciplinaESemestre(int disciplina_id, int semestre_letivo_id) {
+        String sql = """
+        SELECT * FROM tema
+        WHERE disciplina_id = ?
+          AND semestre_letivo_id = ?
+          AND deletado_em IS NULL
+        ORDER BY prioridade ASC
+        """;
+
+        List<Tema> temas = new ArrayList<>();
+
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setInt(1, disciplina_id);
+            stmt.setInt(2, semestre_letivo_id);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    Tema tema = new Tema();
+                    tema.setId_tema(rs.getInt("id_tema"));
+                    tema.setDisciplina_id(rs.getInt("disciplina_id"));
+                    tema.setSemestre_letivo_id(rs.getInt("semestre_letivo_id"));
+                    tema.setNome(rs.getString("nome"));
+                    tema.setEh_avaliacao(rs.getInt("eh_avaliacao"));
+                    tema.setQtd_min_aulas(rs.getInt("qtd_min_aulas"));
+                    tema.setQtd_max_aulas(rs.getInt("qtd_max_aulas"));
+                    tema.setPrioridade(rs.getInt("prioridade"));
+                    tema.setEh_opcional(rs.getInt("eh_opcional"));
+                    temas.add(tema);
+                }
             }
         } catch (SQLException e) {
-            System.err.println("Erro ao listar temas: " + e.getMessage());
-            throw e;
-        } finally {
-            DatabaseConnection.closeConnection();
+            System.out.println("Erro ao listar temas: " + e.getMessage());
         }
-        return lista;
+
+        return temas;
     }
 
-    public Tema buscarPorId(int idTema) throws SQLException {
-        String sql = "SELECT * FROM tema WHERE id_tema = ?";
-        Connection conn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
+    //EDITA TEMA
+    public void editarTema(Tema tema) {
 
-        try {
-            conn = DatabaseConnection.getConnection();
-            ps = conn.prepareStatement(sql);
-            ps.setInt(1, idTema);
+        String sql = """
+        UPDATE tema
+        SET
+            disciplina_id = ?,
+            semestre_letivo_id = ?,
+            nome = ?,
+            eh_avaliacao = ?,
+            qtd_min_aulas = ?,
+            qtd_max_aulas = ?,
+            prioridade = ?,
+            eh_opcional = ?
+        WHERE id_tema = ?
+        """;
 
-            rs = ps.executeQuery();
-            if (rs.next()) {
-                return new Tema(
-                        rs.getInt("id_tema"),
-                        rs.getInt("disciplina_id"),
-                        rs.getInt("semestre_letivo_id"),
-                        rs.getString("nome"),
-                        rs.getInt("eh_avaliacao"),
-                        rs.getInt("qtd_min_aulas"),
-                        rs.getInt("qtd_max_aulas"),
-                        rs.getInt("prioridade"),
-                        rs.getInt("eh_opcional"),
-                        rs.getObject("deleted_at", LocalDate.class)
-                );
-            }
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+
+            stmt.setInt(1, tema.getDisciplina_id());
+            stmt.setInt(2, tema.getSemestre_letivo_id());
+            stmt.setString(3, tema.getNome());
+            stmt.setInt(4, tema.getEh_avaliacao());
+            stmt.setInt(5, tema.getQtd_min_aulas());
+            stmt.setInt(6, tema.getQtd_max_aulas());
+            stmt.setInt(7, tema.getPrioridade());
+            stmt.setInt(8, tema.getEh_opcional());
+
+            stmt.setInt(9, tema.getId_tema());
+
+            stmt.executeUpdate();
+
+            System.out.println("Tema editado com sucesso!");
+
         } catch (SQLException e) {
-            System.err.println("Erro ao buscar tema: " + e.getMessage());
-            throw e;
-        } finally {
-            DatabaseConnection.closeConnection();
+            System.out.println("Erro ao editar tema: " + e.getMessage());
         }
-        return null;
     }
 
-    public int inserirTema(Tema t) throws SQLException {
-        String sql = "INSERT INTO tema (disciplina_id, semestre_letivo_id, nome, eh_avaliacao, " +
-                "qtd_min_aulas, qtd_max_aulas, prioridade, eh_opcional) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-        Connection conn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
+    //EXCLUÍ TEMA
+    public void excluirTema(Integer idTema) {
 
-        try {
-            conn = DatabaseConnection.getConnection();
-            ps = conn.prepareStatement(sql, PreparedStatement.RETURN_GENERATED_KEYS);
+        String sql = """
+        UPDATE tema
+        SET deletado_em = CURRENT_DATE
+        WHERE id_tema = ?
+        """;
 
-            ps.setInt(1, t.getDisciplina_id());
-            ps.setInt(2, t.getSemestre_letivo_id());
-            ps.setString(3, t.getNome());
-            ps.setInt(4, t.getEh_avaliacao());
-            ps.setInt(5, t.getQtd_min_aulas());
-            ps.setInt(6, t.getQtd_max_aulas());
-            ps.setInt(7, t.getPrioridade());
-            ps.setInt(8, t.getEh_opcional());
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
 
-            ps.executeUpdate();
+            stmt.setInt(1, idTema);
 
-            rs = ps.getGeneratedKeys();
-            if (rs.next()) {
-                return rs.getInt(1);
-            }
+            stmt.executeUpdate();
+
+            System.out.println("Tema excluído com sucesso!");
+
         } catch (SQLException e) {
-            System.err.println("Erro ao inserir tema: " + e.getMessage());
-            throw e;
-        } finally {
-            DatabaseConnection.closeConnection();
+            System.out.println("Erro ao excluir tema: " + e.getMessage());
         }
-        return -1;
     }
+
+
 }

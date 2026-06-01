@@ -1,211 +1,264 @@
 package org.example.demo3.dao;
 
 import org.example.demo3.DatabaseConnection;
+import org.example.demo3.dto.AdmCursoExibicao;
 import org.example.demo3.entity.Curso;
-import org.example.demo3.entity.SemestreLetivo;
-
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 
 public class CursoDAO {
 
-    private Connection connection;
+    public CursoDAO() {}
 
-    public CursoDAO() {
-        this.connection = DatabaseConnection.getConnection();
+    public Integer listarIdCurso(String nomeCurso) throws SQLException{
+        String sql = "SELECT id_curso FROM curso WHERE nome = ?;";
+        Integer id;
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, nomeCurso);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+
+                    id = rs.getInt("id_curso");
+                    return id;
+                }
+            }
+        }
+        return null;
     }
 
-    public Curso buscarCursoCoordenador(int coordenadorId) throws SQLException{
+    public List<AdmCursoExibicao> listarCursosDTO(Integer ano, Integer semestreAno) throws SQLException{
         String sql = """
-            SELECT nome FROM curso WHERE coordenador_id = ?;
-            """;
-        Connection conn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
+            SELECT DISTINCT c.nome, c.turno, c.qtd_semestres, u.email 
+            FROM curso AS c LEFT JOIN usuario AS u ON c.coordenador_id = u.id_usuario 
+            INNER JOIN horario_curso AS hc ON hc.curso_id = c.id_curso 
+            INNER JOIN semestre_letivo AS sl ON 
+            sl.id_semestre_letivo = hc.semestre_letivo_id 
+            WHERE sl.ano = ? AND sl.numero_semestre = ?;
+        """;
 
-        Curso c = new Curso();
-        try {
-            conn = DatabaseConnection.getConnection();
-            ps = conn.prepareStatement(sql);
-            ps.setInt(1, coordenadorId);
+        List<AdmCursoExibicao> listaCDto = new ArrayList<>();
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, ano);
+            ps.setInt(2, semestreAno);
 
-            rs = ps.executeQuery();
-
-            while (rs.next()) {
-                c.setNome(rs.getString("nome"));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    AdmCursoExibicao cDto = new AdmCursoExibicao(
+                            rs.getString("c.nome"),
+                            rs.getString("c.turno"),
+                            rs.getInt("c.qtd_semestres"),
+                            rs.getString("u.email")
+                    );
+                    listaCDto.add(cDto);
+                }
             }
-        } catch (SQLException e) {
-            System.err.println("Erro ao listar temas: " + e.getMessage());
-            throw e;
-        } finally {
-            DatabaseConnection.closeConnection();
         }
+        return listaCDto;
+    }
 
-        return c;
+    public List<Curso> buscarCursoCoordenador(int coordenadorId) throws SQLException {
+        String sql = "SELECT id_curso, nome FROM curso WHERE coordenador_id = ?;"; // ← adiciona id_curso
+
+        List<Curso> listaC = new ArrayList<>();
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, coordenadorId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {  // ← era if, troca para while
+                    Curso c = new Curso();
+                    c.setId_curso(rs.getInt("id_curso")); // ← adiciona
+                    c.setNome(rs.getString("nome"));
+                    listaC.add(c);
+                }
+            }
+        }
+        return listaC;
+    }
+
+    public void removerCoordenadorDeCurso(Integer idCurso) throws SQLException {
+        String sql = "UPDATE curso SET coordenador_id = NULL WHERE id_curso = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, idCurso);
+            ps.executeUpdate();
+        }
     }
 
     public List<Curso> listarCursosProfessor(int professorId, int ano, int semestreAno) throws SQLException {
         String sql = """
-            SELECT DISTINCT c.nome FROM atribuicao_professor AS ap INNER JOIN 
-            semestre_letivo AS sl ON sl.id_semestre_letivo = ap.semestre_letivo_id 
+            SELECT DISTINCT c.nome FROM atribuicao_professor AS ap 
+            INNER JOIN semestre_letivo AS sl ON sl.id_semestre_letivo = ap.semestre_letivo_id 
             INNER JOIN disciplina AS d ON ap.disciplina_id = d.id_disciplina 
-            INNER JOIN curso AS c ON d.curso_id = c.id_curso WHERE ap.professor_id = ? 
-            AND sl.ano = ? AND sl.numero_semestre = ?;
+            INNER JOIN curso AS c ON d.curso_id = c.id_curso 
+            WHERE ap.professor_id = ? AND sl.ano = ? AND sl.numero_semestre = ?;
             """;
-        Connection conn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
-
         List<Curso> lista = new ArrayList<>();
-        try {
-            conn = DatabaseConnection.getConnection();
-            ps = conn.prepareStatement(sql);
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, professorId);
             ps.setInt(2, ano);
             ps.setInt(3, semestreAno);
-
-            rs = ps.executeQuery();
-            while (rs.next()) {
-                Curso c = new Curso();
-                c.setNome(rs.getString("c.nome"));
-                lista.add(c);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Curso c = new Curso();
+                    c.setNome(rs.getString("nome"));
+                    lista.add(c);
+                }
             }
-        } catch (SQLException e) {
-            System.err.println("Erro ao listar temas: " + e.getMessage());
-            throw e;
-        } finally {
-            DatabaseConnection.closeConnection();
         }
-
         return lista;
     }
 
-    public void inserirCurso(Curso curso) {
+    public Integer inserirCursoRetornaId(String nomeCurso, String turno, Integer qtdSemestre) throws SQLException {
+        String sql = "INSERT INTO curso(nome, turno, qtd_semestres) VALUES (?, ?, ?);";
 
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1, nomeCurso);
+            ps.setString(2, turno);
+            ps.setInt(3, qtdSemestre);
+            ps.executeUpdate();
+
+            try (ResultSet rs = ps.getGeneratedKeys()) {
+                if (rs.next()) return rs.getInt(1);
+            }
+        }
+        return null;
+    }
+
+    public void alterarCurso(AdmCursoExibicao cDto, Integer coord_id, String nomeAntigo){
         String sql = """
-            INSERT INTO curso (
-                coordenador_id,
-                nome,
-                turno,
-                qtd_semestres,
-                deletado_em
-            ) VALUES (?, ?, ?, ?, ?)
-            """;
+        UPDATE curso SET coordenador_id = ?, nome = ?, turno = ?, qtd_semestres = ? WHERE nome = ?;
+        """;
 
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
 
+            if (coord_id == null) {
+                stmt.setNull(1, java.sql.Types.INTEGER);
+            } else {
+                stmt.setInt(1, coord_id);
+            }
+
+            stmt.setString(2, cDto.getNome());
+            stmt.setString(3, cDto.getTurno());
+            stmt.setInt(4, cDto.getQtd_semestres());
+            stmt.setString(5, nomeAntigo);
+
+            int rowsAffected = stmt.executeUpdate();
+
+            if (rowsAffected > 0) {
+                System.out.println("Update realizado com sucesso!");
+            } else {
+                System.out.println("Nenhum registro encontrado com o Nome fornecido.");
+            }
+
+        } catch (SQLException e) {
+            System.err.println("Erro ao executar update: " + e.getMessage());
+        }
+    }
+
+    public Integer inserirCursoRetornaId(Integer idCoord, String nomeCurso, String turno, Integer qtdSemestre) throws SQLException {
+        String sql = "INSERT INTO curso(coordenador_id, nome, turno, qtd_semestres) VALUES (?, ?, ?, ?);";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setInt(1, idCoord);
+            ps.setString(2, nomeCurso);
+            ps.setString(3, turno);
+            ps.setInt(4, qtdSemestre);
+            ps.executeUpdate();
+
+            try (ResultSet rs = ps.getGeneratedKeys()) {
+                if (rs.next()) return rs.getInt(1);
+            }
+        }
+        return null;
+    }
+
+    public void deletarCursoProcessando(Integer idCurso) throws SQLException {
+        String sql = "DELETE FROM curso WHERE id_curso = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, idCurso);
+            ps.executeUpdate();
+        }
+    }
+
+    public int buscarQtdSemestresPorId(int idCurso) throws SQLException {
+        String sql = "SELECT qtd_semestres FROM curso WHERE id_curso = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, idCurso);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getInt("qtd_semestres");
+            }
+        }
+        return 0;
+    }
+
+    public void inserirCurso(Curso curso) throws SQLException {
+        String sql = "INSERT INTO curso (coordenador_id, nome, turno, qtd_semestres, deletado_em) VALUES (?, ?, ?, ?, ?)";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setInt(1, curso.getCoordenador_id());
             stmt.setString(2, curso.getNome());
             stmt.setString(3, curso.getTurno());
             stmt.setInt(4, curso.getQtd_semestres());
-
-            if (curso.getDeletado_em() != null) {
-                stmt.setTimestamp(5, Timestamp.valueOf(curso.getDeletado_em()));
-            } else {
-                stmt.setTimestamp(5, null);
-            }
-
+            stmt.setTimestamp(5, curso.getDeletado_em() != null ? Timestamp.valueOf(curso.getDeletado_em()) : null);
             stmt.executeUpdate();
-
-            System.out.println("Curso inserido com sucesso!");
-
-        } catch (SQLException e) {
-            System.out.println("Erro ao inserir curso: " + e.getMessage());
         }
     }
 
-    public List<Curso> listarCursos() {
-
+    public List<Curso> listarCursos() throws SQLException {
         List<Curso> cursos = new ArrayList<>();
-
-        String sql = """
-            SELECT *
-            FROM curso
-            """;
-
-        try (PreparedStatement stmt = connection.prepareStatement(sql);
+        String sql = "SELECT * FROM curso";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
              ResultSet rs = stmt.executeQuery()) {
-
             while (rs.next()) {
-
                 Curso curso = new Curso();
-
                 curso.setId_curso(rs.getInt("id_curso"));
                 curso.setCoordenador_id(rs.getInt("coordenador_id"));
                 curso.setNome(rs.getString("nome"));
                 curso.setTurno(rs.getString("turno"));
                 curso.setQtd_semestres(rs.getInt("qtd_semestres"));
-
-                Timestamp deletadoEm = rs.getTimestamp("deletado_em");
-
-                if (deletadoEm != null) {
-                    curso.setDeletado_em(deletadoEm.toLocalDateTime());
-                }
-
+                Timestamp del = rs.getTimestamp("deletado_em");
+                if (del != null) curso.setDeletado_em(del.toLocalDateTime());
                 cursos.add(curso);
             }
-
-        } catch (SQLException e) {
-            System.out.println("Erro ao listar cursos: " + e.getMessage());
         }
-
         return cursos;
     }
 
-    public void atualizarCurso(Curso curso) {
 
+    public List<AdmCursoExibicao> listarTodosCursosDTO() throws SQLException {
         String sql = """
-            UPDATE curso
-            SET coordenador_id = ?,
-                nome = ?,
-                turno = ?,
-                qtd_semestres = ?,
-                deletado_em = ?
-            WHERE id_curso = ?
-            """;
+        SELECT c.nome, c.turno, c.qtd_semestres, u.email
+        FROM curso c
+        LEFT JOIN usuario u ON u.id_usuario = c.coordenador_id
+        WHERE c.deletado_em IS NULL
+        ORDER BY c.id_curso ASC
+        """;
 
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-
-            stmt.setInt(1, curso.getCoordenador_id());
-            stmt.setString(2, curso.getNome());
-            stmt.setString(3, curso.getTurno());
-            stmt.setInt(4, curso.getQtd_semestres());
-
-            if (curso.getDeletado_em() != null) {
-                stmt.setTimestamp(5, Timestamp.valueOf(curso.getDeletado_em()));
-            } else {
-                stmt.setTimestamp(5, null);
+        List<AdmCursoExibicao> lista = new ArrayList<>();
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                lista.add(new AdmCursoExibicao(
+                        rs.getString("nome"),
+                        rs.getString("turno"),
+                        rs.getInt("qtd_semestres"),
+                        rs.getString("email")   // NULL vira null automaticamente
+                ));
             }
-
-            stmt.setInt(6, curso.getId_curso());
-
-            stmt.executeUpdate();
-
-            System.out.println("Curso atualizado com sucesso!");
-
-        } catch (SQLException e) {
-            System.out.println("Erro ao atualizar curso: " + e.getMessage());
         }
+        return lista;
     }
 
-    public void excluirCurso(Integer idCurso) {
-
-        String sql = """
-            DELETE FROM curso
-            WHERE id_curso = ?
-            """;
-
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-
-            stmt.setInt(1, idCurso);
-
-            stmt.executeUpdate();
-
-            System.out.println("Curso removido com sucesso!");
-
-        } catch (SQLException e) {
-            System.out.println("Erro ao remover curso: " + e.getMessage());
-        }
-    }
 }

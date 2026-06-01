@@ -1,6 +1,13 @@
 package org.example.demo3.entity;
 
+import org.example.demo3.DatabaseConnection;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 
 public class Planejamento {
 
@@ -26,4 +33,5 @@ public class Planejamento {
 
     public LocalDateTime getGerado_em() { return gerado_em; }
     public void setGerado_em(LocalDateTime gerado_em) { this.gerado_em = gerado_em; }
+
 }

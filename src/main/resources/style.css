@@ -1,0 +1,36 @@
+/* Cor do botão quando NÃO está selecionado */
+.toggle-button {
+    -fx-background-color: #34495e;
+    -fx-text-fill: #bdc3c7;
+    -fx-background-radius: 5;
+}
+
+/* Cor do botão quando ESTÁ selecionado */
+.toggle-button:selected {
+    -fx-background-color: #3498db; /* Azul vibrante */
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    /* Adiciona uma sombra interna para parecer pressionado */
+    -fx-effect: innershadow(three-pass-box, rgba(0,0,0,0.7), 5, 0, 0, 1);
+}
+
+/* Efeito ao passar o mouse */
+.toggle-button:hover {
+    -fx-background-color: #4e6a85;
+}
+
+/* Muda a cor do texto do item selecionado (o que aparece na caixa) */
+.combo-box .list-cell {
+    -fx-text-fill: white;
+}
+
+/* Garante que o fundo da caixa combine com seu ToolBar escuro (opcional) */
+.combo-box {
+    -fx-background-color: #34495e;
+    -fx-border-color: #7f8c8d;
+}
+
+/* Ajusta a cor da seta para branco */
+.combo-box .arrow {
+    -fx-background-color: white;
+}

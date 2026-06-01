@@ -6,12 +6,12 @@ import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
-import javafx.scene.control.ComboBox;
-import javafx.scene.control.Label;
-import javafx.scene.control.ToggleButton;
+import javafx.scene.control.*;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
-import org.example.demo3.DatabaseConnection;
+import javafx.stage.Stage;
+import javafx.scene.Scene;
+import javafx.scene.Node;
 import org.example.demo3.UsuarioAtual;
 import org.example.demo3.dao.CursoDAO;
 import org.example.demo3.dao.DisciplinaDAO;
@@ -21,12 +21,12 @@ import org.example.demo3.entity.Disciplina;
 import org.example.demo3.entity.SemestreLetivo;
 
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+
+//VISUAL
+import javafx.scene.layout.Pane;
 
 public class MainShellController {
     @FXML private ComboBox<String> cbAno;
@@ -51,99 +51,271 @@ public class MainShellController {
     private List<Disciplina> listaD;
     private List<Curso> listaCursos;
 
-    UsuarioAtual logado = UsuarioAtual.getInstancia();
-    private Integer anoSelecionado;
-    private Integer semestreAnoEscolhido;
-    private String cursoEscolhido;
-    private Integer semestreCursoEscolhido;
-    private String disciplinaEscolhida;
+    private final List<Integer> ordemIdDisciplinas = new ArrayList<>();
+    private final UsuarioAtual logado = UsuarioAtual.getInstancia();
+
+    private ProfPlanejamentoController planejamentoAtivoController;
+    private CoordPainelController coordPainelAtivoController;
+    private AdmCalendarioBloqueiosController calendarioAtivoController;
 
     @FXML
-    public void initialize(){
+    public void initialize() {
+        UsuarioAtual logado = UsuarioAtual.getInstancia();
+
+        if (logado.getId_usuario() == null) {
+            System.out.println("Erro: Nenhum usuário logado!");
+            carregarConteudo("/login.fxml");
+            return;
+        }
+
+        if (lblPerfilUsuario != null) {
+            lblPerfilUsuario.setText("Perfil: " + logado.getTipo());
+        }
+
+        logado.anoProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null) processarDadosAnos();
+        });
+
+        logado.anoSemestreProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null) processarDadosAnos();
+        });
+
+        configurarInterfacePorPerfil(logado.getTipo());
+        configurarResetInicial();
+        configurarValoresPreProgramados();
+        processarDadosAnos();
+        estilizarMenuLateral();
+        estilizarToolBar();
+    }
+
+    private void configurarPreValoresAnos(){
+        processarDadosAnos();
+        popularComboBoxAnos();
+        if (listaSl != null && !listaSl.isEmpty()) {
+            cbAno.setValue(listaSl.getLast().getAno().toString());
+            logado.setAno(Integer.parseInt(cbAno.getValue()));
+        }
+    }
+
+    private void configurarPreValoresAnoSemestre(){
+        if (listaSl != null && !listaSl.isEmpty()) {
+            if (listaSl.getLast().getNumero_semestre().equals(1)){
+                tbSem1.setDisable(false);
+                tbSem1.setSelected(true);
+                logado.setAnoSemestre(1);
+            } else {
+                tbSem2.setDisable(false);
+                tbSem2.setSelected(true);
+                logado.setAnoSemestre(2);
+            }
+        }
+    }
+
+    private void configurarPreValoresCursos(){
+        try {
+            CursoDAO cDAO = new CursoDAO();
+            processarDadosCursos();
+            popularComboboxCursos();
+            if (listaCursos != null && !listaCursos.isEmpty()) {
+                cbCurso.setValue(listaCursos.getLast().getNome());
+                logado.setIdCurso(cDAO.listarIdCurso(cbCurso.getValue()));
+            }
+        } catch (SQLException e){
+            e.printStackTrace();
+        }
+    }
+
+    private void configurarPreValoresCursoCoord() {
+        try {
+            CursoDAO cDAO = new CursoDAO();
+            listaCursos = cDAO.buscarCursoCoordenador(logado.getId_usuario());
+            if (listaCursos != null && !listaCursos.isEmpty()) {
+                Curso curso = listaCursos.get(0);
+                logado.setIdCurso(curso.getId_curso());
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void configurarPreValoresCursoSemestresEDisciplinas(){
+        processarDadosCursoSemestresEDisciplinas();
+        popularComboboxCursoSemestres();
+        if (listaD != null && !listaD.isEmpty()) {
+            cbSemestreCurso.setValue(listaD.getLast().getSemestre_curso().toString());
+            logado.setSemestreCurso(Integer.parseInt(cbSemestreCurso.getValue()));
+            popularComboboxDisciplinas();
+            cbDisciplina.setValue(listaD.getLast().getNome());
+
+            int index = cbDisciplina.getSelectionModel().getSelectedIndex();
+            if (index >= 0 && index < ordemIdDisciplinas.size()) {
+                logado.setIdDisciplina(ordemIdDisciplinas.get(index));
+            }
+        }
+    }
+
+    private void configurarValoresPreProgramados(){
+        configurarPreValoresAnos();
+        configurarPreValoresAnoSemestre();
+
+        if ("PROF".equals(logado.getTipo())){
+            configurarPreValoresCursos();
+            configurarPreValoresCursoSemestresEDisciplinas();
+        } else if ("COORD".equals(logado.getTipo())){
+            configurarPreValoresCursoCoord();
+        }
+    }
+
+    private void configurarResetInicial() {
         tbSem1.setDisable(true);
         tbSem2.setDisable(true);
+    }
 
-        logado.setId_usuario(4);
-        logado.setTipo("PROF");
+    private void configurarInterfacePorPerfil(String tipo) {
+        esconderTodasSecoes();
 
-        ObservableList<String> opcoesAno = FXCollections.observableArrayList();
-        SemestreLetivoDAO slDao = new SemestreLetivoDAO();
-
-        if (logado.getTipo() == "PROF"){
+        if ("PROF".equals(tipo)) {
             carregarConteudo("/prof_temas.fxml");
-            secaoProfessor.setVisible(true);
-            secaoProfessor.setManaged(true);
+            exibirSecao(secaoProfessor);
+            configurarVisibilidadeFiltros(true);
+        } else if ("COORD".equals(tipo)) {
+            navCoordPainel();
+            exibirSecao(secaoCoordenador);
+            configurarVisibilidadeFiltros(false);
+        } else if ("ADM".equals(tipo)) {
+            carregarConteudo("/adm_cursos_horarios.fxml");
+            exibirSecao(secaoAdm);
+            configurarVisibilidadeFiltros(false);
+        }
+    }
 
-            try{
-                listaSl = slDao.listarProfessorAnoESemestreAno(logado.getId_usuario());
-                for (SemestreLetivo sl: listaSl){
-                    opcoesAno.add(sl.getAno().toString());
-                }
-                cbAno.setItems(opcoesAno);
+    private void processarDadosAnos() {
+        SemestreLetivoDAO slDao = new SemestreLetivoDAO();
+        try {
+            listaSl = switch (logado.getTipo()) {
+                case "PROF" -> slDao.listarProfessorAnoESemestreAno(logado.getId_usuario());
+                case "COORD" -> slDao.listarCoordenadorAnoESemestreAno(logado.getId_usuario());
+                case "ADM" -> slDao.listarAdmsAnoESemestreAno();
+                default -> new ArrayList<>();
+            };
 
-            } catch (SQLException e){
-                e.printStackTrace();
+            if (listaSl != null && !listaSl.isEmpty()) {
+                popularComboBoxAnos();
             }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
 
-        } else {
-            if (logado.getTipo() == "COORD") {
-                carregarConteudo("/coord_painel.fxml");
-                secaoCoordenador.setVisible(true);
-                secaoCoordenador.setManaged(true);
-                lblSemestreCurso.setVisible(false);
-                lblSemestreCurso.setManaged(false);
-                cbSemestreCurso.setVisible(false);
-                cbSemestreCurso.setManaged(false);
-                lblDisciplina.setVisible(false);
-                lblDisciplina.setManaged(false);
-                cbDisciplina.setVisible(false);
-                cbDisciplina.setManaged(false);
+    private void processarDadosCursos(){
+        CursoDAO cDao = new CursoDAO();
+        try {
+            listaCursos = cDao.listarCursosProfessor(
+                    logado.getId_usuario(), logado.getAno(), logado.getAnoSemestre());
 
-                try{
-                    listaSl = slDao.listarCoordenadorAnoESemestreAno(logado.getId_usuario());
-                    for (SemestreLetivo sl: listaSl){
-                        if (!opcoesAno.contains(sl.getAno().toString())){
-                            opcoesAno.add(sl.getAno().toString());
-                        }
-                    }
-                    cbAno.setItems(opcoesAno);
+            if (listaCursos != null && !listaCursos.isEmpty()) {
+                popularComboboxCursos();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
 
-                } catch (SQLException e){
-                    e.printStackTrace();
-                }
+    private void processarDadosCursoSemestresEDisciplinas(){
+        DisciplinaDAO dDao = new DisciplinaDAO();
+        try{
+            listaD = dDao.listarDisciplinasCurso(
+                    logado.getId_usuario(), logado.getAno(),
+                    logado.getAnoSemestre(), logado.getIdCurso());
 
-            } else {
-                carregarConteudo("/adm_cursos_horarios.fxml");
-                secaoAdm.setVisible(true);
-                secaoAdm.setManaged(true);
+            if (listaD != null && !listaD.isEmpty()) {
+                popularComboboxCursoSemestres();
+            }
+        } catch (SQLException e){
+            e.printStackTrace();
+        }
+    }
 
-                lblCurso.setVisible(false);
-                lblCurso.setManaged(false);
-                cbCurso.setVisible(false);
-                cbCurso.setManaged(false);
-                lblSemestreCurso.setVisible(false);
-                lblSemestreCurso.setManaged(false);
-                cbSemestreCurso.setVisible(false);
-                cbSemestreCurso.setManaged(false);
-                lblDisciplina.setVisible(false);
-                lblDisciplina.setManaged(false);
-                cbDisciplina.setVisible(false);
-                cbDisciplina.setManaged(false);
-
-                try{
-                    listaSl = slDao.listarAdmsAnoESemestreAno();
-                    for (SemestreLetivo sl: listaSl){
-                        if (!opcoesAno.contains(sl.getAno().toString())){
-                            opcoesAno.add(sl.getAno().toString());
-                        }
-                    }
-                    cbAno.setItems(opcoesAno);
-
-                } catch (SQLException e){
-                    e.printStackTrace();
+    private void popularComboBoxAnos() {
+        ObservableList<String> opcoesAno = FXCollections.observableArrayList();
+        if (listaSl != null) {
+            for (SemestreLetivo sl : listaSl) {
+                String anoStr = sl.getAno().toString();
+                if (!opcoesAno.contains(anoStr)) {
+                    opcoesAno.add(anoStr);
                 }
             }
         }
+        cbAno.setItems(opcoesAno);
+    }
+
+    private void popularComboboxCursos(){
+        ObservableList<String> opcoesCurso = FXCollections.observableArrayList();
+        if (listaCursos != null) {
+            for (Curso c : listaCursos) {
+                opcoesCurso.add(c.getNome());
+            }
+        }
+        cbCurso.setItems(opcoesCurso);
+    }
+
+    private void popularComboboxCursoSemestres(){
+        ObservableList<String> opcoesSemestreCurso = FXCollections.observableArrayList();
+        if (listaD != null) {
+            for (Disciplina d: listaD){
+                if (!opcoesSemestreCurso.contains(d.getSemestre_curso().toString())) {
+                    opcoesSemestreCurso.add(d.getSemestre_curso().toString());
+                }
+            }
+        }
+        cbSemestreCurso.setItems(opcoesSemestreCurso);
+    }
+
+    private void popularComboboxDisciplinas(){
+        ObservableList<String> opcoesDisciplina = FXCollections.observableArrayList();
+        ordemIdDisciplinas.clear();
+
+        if (listaD != null) {
+            for (Disciplina d: listaD){
+                if (d.getSemestre_curso().equals(logado.getSemestreCurso())){
+                    opcoesDisciplina.add(d.getNome());
+                    ordemIdDisciplinas.add(d.getId_disciplina());
+                }
+            }
+        }
+        cbDisciplina.setItems(opcoesDisciplina);
+    }
+
+    private void esconderTodasSecoes() {
+        VBox[] secoes = {secaoProfessor, secaoCoordenador, secaoAdm};
+        for (VBox s : secoes) {
+            if (s != null) {
+                s.setVisible(false);
+                s.setManaged(false);
+            }
+        }
+    }
+
+    private void exibirSecao(VBox secao) {
+        if (secao != null) {
+            secao.setVisible(true);
+            secao.setManaged(true);
+        }
+    }
+
+    private void configVisibilidadeFiltros(boolean visivel) {
+        lblCurso.setVisible(visivel); lblCurso.setManaged(visivel);
+        cbCurso.setVisible(visivel);  cbCurso.setManaged(visivel);
+
+        lblSemestreCurso.setVisible(visivel); lblSemestreCurso.setManaged(visivel);
+        cbSemestreCurso.setVisible(visivel);  cbSemestreCurso.setManaged(visivel);
+
+        lblDisciplina.setVisible(visivel); lblDisciplina.setManaged(visivel);
+        cbDisciplina.setVisible(visivel);  cbDisciplina.setManaged(visivel);
+    }
+
+    private void configurarVisibilidadeFiltros(boolean visivel) {
+        configVisibilidadeFiltros(visivel);
     }
 
     private void carregarConteudo(String caminhoFxml) {
@@ -152,6 +324,9 @@ public class MainShellController {
             Parent novoConteudo = loader.load();
             areaConteudo.getChildren().clear();
             areaConteudo.getChildren().add(novoConteudo);
+            planejamentoAtivoController = null;
+            coordPainelAtivoController = null;
+            calendarioAtivoController = null;
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -159,16 +334,25 @@ public class MainShellController {
 
     @FXML
     public void handleTrocaAno() {
-        anoSelecionado = Integer.parseInt(cbAno.getValue());
-        tbSem1.setDisable(true);
-        tbSem2.setDisable(true);
-        for (SemestreLetivo sl: listaSl){
-            if (sl.getAno().equals(anoSelecionado)){
-                if (sl.getNumero_semestre() == 1){
-                    tbSem1.setDisable(false);
-                } else if (sl.getNumero_semestre() == 2){
-                    tbSem2.setDisable(false);
+        if (cbAno.getValue() != null) {
+            logado.setAno(Integer.parseInt(cbAno.getValue()));
+
+            tbSem1.setDisable(true);
+            tbSem2.setDisable(true);
+            if (listaSl != null) {
+                for (SemestreLetivo sl: listaSl){
+                    if (sl.getAno().equals(logado.getAno())){
+                        if (sl.getNumero_semestre() == 1){
+                            tbSem1.setDisable(false);
+                        } else if (sl.getNumero_semestre() == 2){
+                            tbSem2.setDisable(false);
+                        }
+                    }
                 }
+            }
+
+            if (calendarioAtivoController != null) {
+                calendarioAtivoController.carregarDadosPorAnoESemestre(logado.getAno(), logado.getAnoSemestre());
             }
         }
     }
@@ -177,161 +361,268 @@ public class MainShellController {
     public void handleSemestreToggle(ActionEvent event) {
         Object ativador = event.getSource();
         if (ativador == tbSem1){
-            semestreAnoEscolhido = 1;
+            logado.setAnoSemestre(1);
+            tbSem2.setSelected(false);
         } else {
-            semestreAnoEscolhido = 2;
+            logado.setAnoSemestre(2);
+            tbSem1.setSelected(false);
         }
+        processarDadosCursos();
 
-        ObservableList<String> opcoesCurso = FXCollections.observableArrayList();
-        CursoDAO cDao = new CursoDAO();
-
-        if (logado.getTipo() == "PROF"){
-            try{
-                listaCursos = cDao.listarCursosProfessor(logado.getId_usuario(), anoSelecionado, semestreAnoEscolhido);
-                for (Curso c: listaCursos){
-                    opcoesCurso.add(c.getNome());
-                }
-                cbCurso.setItems(opcoesCurso);
-
-            } catch (SQLException e){
-                e.printStackTrace();
-            }
-        } else if (logado.getTipo() == "COORD"){
-            try{
-                Curso c = cDao.buscarCursoCoordenador(logado.getId_usuario());
-                listaCursos = new ArrayList<>();
-                listaCursos.add(c);
-                opcoesCurso.add(c.getNome());
-                cbCurso.setItems(opcoesCurso);
-
-            } catch (SQLException e){
-                e.printStackTrace();
-            }
+        if (calendarioAtivoController != null) {
+            calendarioAtivoController.carregarDadosPorAnoESemestre(logado.getAno(), logado.getAnoSemestre());
         }
     }
 
     @FXML
     public void handleTrocaCurso(){
-        cursoEscolhido = cbCurso.getValue();
+        String cursoSelecionado = cbCurso.getValue();
+        if (cursoSelecionado != null) {
+            try {
+                CursoDAO cDAO = new CursoDAO();
+                logado.setIdCurso(cDAO.listarIdCurso(cursoSelecionado));
+                processarDadosCursoSemestresEDisciplinas();
 
-        ObservableList<String> opcoesSemestreCurso = FXCollections.observableArrayList();
-        DisciplinaDAO dDao = new DisciplinaDAO();
-        try{
-            listaD = dDao.listarDisciplinasCurso(logado.getId_usuario(), anoSelecionado, semestreAnoEscolhido, cursoEscolhido);
-            for (Disciplina d: listaD){
-                if (!opcoesSemestreCurso.contains(d.getSemestre_curso().toString())) {
-                    opcoesSemestreCurso.add(d.getSemestre_curso().toString());
-                }
+            } catch (SQLException e){
+                e.printStackTrace();
             }
-            cbSemestreCurso.setItems(opcoesSemestreCurso);
-
-        } catch (SQLException e){
-            e.printStackTrace();
         }
     }
 
     @FXML
     public void handleTrocaSemestreCurso(){
-        semestreCursoEscolhido = Integer.parseInt(cbSemestreCurso.getValue());
+        String valor = cbSemestreCurso.getValue();
+        if (valor != null && !valor.isEmpty()) {
+            logado.setSemestreCurso(Integer.parseInt(valor));
+            logado.setIdDisciplina(null);
+            popularComboboxDisciplinas();
 
-        ObservableList<String> opcoesDisciplina = FXCollections.observableArrayList();
-        for (Disciplina d: listaD){
-            if (d.getSemestre_curso().equals(semestreCursoEscolhido)){
-                opcoesDisciplina.add(d.getNome());
-            }
         }
-        cbDisciplina.setItems(opcoesDisciplina);
     }
 
     @FXML
     public void handleTrocaDisciplina(){
-        disciplinaEscolhida = cbDisciplina.getValue();
+        int index = cbDisciplina.getSelectionModel().getSelectedIndex();
+        if (index >= 0 && index < ordemIdDisciplinas.size()) {
+            logado.setIdDisciplina(ordemIdDisciplinas.get(index));
+        } else {
+            logado.setIdDisciplina(null);
+        }
     }
 
-    @FXML void handleLogout() {}
-
-    @FXML void navCalendario() { carregarConteudo("/adm_calendario_bloqueios.fxml"); }
-
-    @FXML void navCursosHorarios() { carregarConteudo("/adm_cursos_horarios.fxml"); }
-
-    @FXML void navCoordenaodresAdms() { carregarConteudo("/adm_coordenadores_adms.fxml"); }
-
-    @FXML void navCoordPainel() { carregarConteudo("/coord_painel.fxml"); }
-
-    @FXML void navTemas() { carregarConteudo("/prof_temas.fxml"); }
-
-    /**
-     * MODIFICAÇÃO CIRÚRGICA: Descobre os IDs direto do banco usando os NOMES textuais,
-     * contornando de forma limpa os IDs nulos que vinham dos DAOs intocados.
-     */
-    @FXML
-    void navPlanejamento() {
-        try {
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/prof_planejamento_stats_rotina.fxml"));
-            Parent novoConteudo = loader.load();
-
-            ProfPlanejamentoController profController = loader.getController();
-
-            areaConteudo.getChildren().clear();
-            areaConteudo.getChildren().add(novoConteudo);
-
-            if (anoSelecionado != null && semestreAnoEscolhido != null && cursoEscolhido != null && disciplinaEscolhida != null) {
-
-                int idCurso = descobrirIdCursoPorNome(cursoEscolhido);
-                int idDisciplina = descobrirIdDisciplinaPorNome(disciplinaEscolhida);
-
-                profController.setContextoFiltros(anoSelecionado, semestreAnoEscolhido, idCurso, idDisciplina);
-            }
-
+    @FXML void handleLogout(ActionEvent event) {
+        try{
+            Parent root = FXMLLoader.load(getClass().getResource("/login.fxml"));
+            Stage stage = (Stage) ((Node) event.getSource()).getScene().getWindow();
+            Scene scene = new Scene(root);
+            stage.setScene(scene);
+            stage.show();
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     @FXML
-    public void handleGerarPlanejamento() {
-        if (anoSelecionado == null || semestreAnoEscolhido == null || cursoEscolhido == null || disciplinaEscolhida == null) {
-            return;
+    void navCalendario() {
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/adm_calendario_bloqueios.fxml"));
+            Parent novoConteudo = loader.load();
+
+            calendarioAtivoController = loader.getController();
+
+            areaConteudo.getChildren().clear();
+            areaConteudo.getChildren().add(novoConteudo);
+            planejamentoAtivoController = null;
+            coordPainelAtivoController = null;
+
+            if (logado.getAno() != null && logado.getAnoSemestre() != null) {
+                calendarioAtivoController.carregarDadosPorAnoESemestre(logado.getAno(), logado.getAnoSemestre());
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
         }
-        navPlanejamento();
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // MÉTODOS AUXILIARES: Consultas locais para buscar IDs por Nome
-    // ═══════════════════════════════════════════════════════════════
-    private int descobrirIdCursoPorNome(String nomeCurso) {
-        String sql = "SELECT id_curso FROM curso WHERE nome = ?";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, nomeCurso);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getInt("id_curso");
-                }
-            }
-        } catch (SQLException e) {
+    @FXML void navCursosHorarios() { carregarConteudo("/adm_cursos_horarios.fxml"); }
+    @FXML void navCoordenaodresAdms() { carregarConteudo("/adm_coordenadores_adms.fxml"); }
+    @FXML void navTemas() { carregarConteudo("/prof_temas.fxml"); }
+
+    @FXML
+    void navCoordPainel() {
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/coord_painel.fxml"));
+            Parent novoConteudo = loader.load();
+
+            coordPainelAtivoController = loader.getController();
+
+            areaConteudo.getChildren().clear();
+            areaConteudo.getChildren().add(novoConteudo);
+            planejamentoAtivoController = null;
+            calendarioAtivoController = null;
+        } catch (IOException e) {
             e.printStackTrace();
-        } finally {
-            DatabaseConnection.closeConnection();
         }
-        return 0;
     }
 
-    private int descobrirIdDisciplinaPorNome(String nomeDisciplina) {
-        String sql = "SELECT id_disciplina FROM disciplina WHERE nome = ?";
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, nomeDisciplina);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getInt("id_disciplina");
+    @FXML
+    void navPlanejamento() {
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/prof_planejamento_stats_rotina.fxml"));
+            Parent novoConteudo = loader.load();
+
+            novoConteudo.setId("raizPlanejamentoPane");
+
+            planejamentoAtivoController = loader.getController();
+            planejamentoAtivoController.setMainShellController(this);
+
+            areaConteudo.getChildren().clear();
+            areaConteudo.getChildren().add(novoConteudo);
+            coordPainelAtivoController = null;
+            calendarioAtivoController = null;
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // =========================================================================
+//  ESTILIZAÇÃO DO MENU LATERAL
+//  Reestiliza os botões do menuLateral para garantir boa legibilidade
+//  sobre o fundo escuro (#34495e), independente do CSS externo.
+// =========================================================================
+    private void estilizarMenuLateral() {
+        if (menuLateral == null) return;
+
+        for (javafx.scene.Node secaoNode : menuLateral.getChildren()) {
+            if (!(secaoNode instanceof VBox secao)) continue;
+
+            for (javafx.scene.Node filho : secao.getChildren()) {
+
+                // ── Labels de categoria (ex: "ADMINISTRADOR", "PROFESSOR") ──────
+                if (filho instanceof Label lbl) {
+                    lbl.setStyle(
+                            "-fx-text-fill: #95a5a6;"  +
+                                    "-fx-font-size: 10px;"     +
+                                    "-fx-font-weight: bold;"   +
+                                    "-fx-padding: 6 0 2 4;"
+                    );
+                }
+
+                // ── Botões de navegação ──────────────────────────────────────────
+                if (filho instanceof Button btn) {
+                    String baseStyle =
+                            "-fx-background-color: transparent;"  +
+                                    "-fx-text-fill: #ecf0f1;"             +
+                                    "-fx-font-size: 13px;"                +
+                                    "-fx-alignment: CENTER-LEFT;"         +
+                                    "-fx-padding: 8 12;"                  +
+                                    "-fx-cursor: hand;"                   +
+                                    "-fx-background-radius: 6;";
+
+                    btn.setStyle(baseStyle);
+
+                    // Hover: clareia o fundo ao passar o mouse
+                    btn.setOnMouseEntered(e ->
+                            btn.setStyle(baseStyle.replace(
+                                    "-fx-background-color: transparent;",
+                                    "-fx-background-color: #3d566e;"
+                            ))
+                    );
+
+                    // Retorna ao estilo base ao sair
+                    btn.setOnMouseExited(e -> btn.setStyle(baseStyle));
                 }
             }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        } finally {
-            DatabaseConnection.closeConnection();
         }
-        return 0;
     }
+    private void estilizarToolBar() {
+
+        // ── Estilo base compartilhado ──────────────────────────────────────────
+        String estiloLabel =
+                "-fx-text-fill: #ecf0f1;"  +
+                        "-fx-font-size: 12px;"     +
+                        "-fx-font-weight: bold;";
+
+        String estiloComboBox =
+                "-fx-background-color: #3d566e;"  +
+                        "-fx-text-fill: #ecf0f1;"         +
+                        "-fx-border-color: #5d7a8a;"      +
+                        "-fx-border-radius: 4;"           +
+                        "-fx-background-radius: 4;"       +
+                        "-fx-cursor: hand;";
+
+        String estiloToggleBase =
+                "-fx-background-color: #3d566e;"  +
+                        "-fx-text-fill: #ecf0f1;"         +
+                        "-fx-border-color: #5d7a8a;"      +
+                        "-fx-border-radius: 4;"           +
+                        "-fx-background-radius: 4;"       +
+                        "-fx-cursor: hand;"               +
+                        "-fx-font-size: 12px;";
+
+        String estiloToggleSelecionado =
+                "-fx-background-color: #2980b9;"  +
+                        "-fx-text-fill: #ffffff;"         +
+                        "-fx-border-color: #1a6fa0;"      +
+                        "-fx-border-radius: 4;"           +
+                        "-fx-background-radius: 4;"       +
+                        "-fx-cursor: hand;"               +
+                        "-fx-font-size: 12px;";
+
+        // ── Todos os Labels da ToolBar (incluindo "Ano:" sem fx:id) ───────────
+        for (javafx.scene.Node node : menuLateral.getParent().getChildrenUnmodifiable()) {
+            if (node instanceof javafx.scene.layout.VBox vbox) {
+                for (javafx.scene.Node filho : vbox.getChildrenUnmodifiable()) {
+                    if (filho instanceof ToolBar toolbar) {
+                        for (javafx.scene.Node item : toolbar.getItems()) {
+                            if (item instanceof Label lbl) {
+                                lbl.setStyle(estiloLabel);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── ComboBoxes de filtro ───────────────────────────────────────────────
+        for (ComboBox<?> cb : new ComboBox[]{cbCurso, cbSemestreCurso, cbDisciplina}) {
+            if (cb != null) cb.setStyle(estiloComboBox);
+        }
+
+        // ── cbAno: texto interno também precisa ser branco ─────────────────────
+        if (cbAno != null) {
+            cbAno.setStyle(estiloComboBox);
+            cbAno.setButtonCell(new ListCell<String>() {
+                @Override
+                protected void updateItem(String item, boolean empty) {
+                    super.updateItem(item, empty);
+                    setText(empty || item == null ? null : item);
+                    setStyle("-fx-text-fill: #ecf0f1; -fx-background-color: transparent;");
+                }
+            });
+        }
+
+        // ── ToggleButtons de semestre ──────────────────────────────────────────
+        for (ToggleButton tb : new ToggleButton[]{tbSem1, tbSem2}) {
+            if (tb == null) continue;
+
+            tb.setStyle(tb.isSelected() ? estiloToggleSelecionado : estiloToggleBase);
+
+            tb.selectedProperty().addListener((obs, antigo, selecionado) ->
+                    tb.setStyle(selecionado ? estiloToggleSelecionado : estiloToggleBase)
+            );
+
+            tb.setOnMouseEntered(e -> {
+                if (!tb.isSelected())
+                    tb.setStyle(estiloToggleBase.replace(
+                            "-fx-background-color: #3d566e;",
+                            "-fx-background-color: #4a6a82;"
+                    ));
+            });
+
+            tb.setOnMouseExited(e ->
+                    tb.setStyle(tb.isSelected() ? estiloToggleSelecionado : estiloToggleBase)
+            );
+        }
+    }
+
 }

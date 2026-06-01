@@ -2,6 +2,7 @@ package org.example.demo3.dao;
 
 import org.example.demo3.DatabaseConnection;
 import org.example.demo3.entity.AtribuicaoProfessor;
+import org.example.demo3.entity.Usuario;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -134,7 +135,7 @@ public class AtribuicaoProfessorDAO {
     }
 
     public boolean existeConflito(int professorId, int semestreLetivoId,
-                                   int diaSemana, int horarioCursoId) throws SQLException {
+                                  int diaSemana, int horarioCursoId) throws SQLException {
         String sql = """
                 SELECT 1
                 FROM atribuicao_horario ah
@@ -200,5 +201,59 @@ public class AtribuicaoProfessorDAO {
             }
         }
         return lista;
+    }
+
+    // AtribuicaoProfessorDAO
+    public List<Usuario> listarProfessoresComAtribuicao(Integer id_coord) throws SQLException {
+        List<Usuario> usuarios = new ArrayList<>();
+        String sql = """
+        SELECT DISTINCT u.id_usuario, u.nome, u.email, u.senha_hash
+        FROM usuario u
+        INNER JOIN usuario_tipo ut ON ut.usuario_id = u.id_usuario
+        INNER JOIN atribuicao_professor ap ON ap.professor_id = u.id_usuario
+        INNER JOIN disciplina d ON ap.disciplina_id = d.id_disciplina
+        INNER JOIN curso c ON d.curso_id = c.id_curso
+        WHERE ut.tipo = 'PROF'
+        AND c.coordenador_id = ?
+        AND u.deletado_em IS NULL
+        ORDER BY u.nome
+        """;
+
+        try (Connection con = DatabaseConnection.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql);
+        ) {
+            ps.setInt(1, id_coord);
+
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                Usuario u = new Usuario();
+                u.setId_usuario(rs.getInt("id_usuario"));
+                u.setNome(rs.getString("nome"));
+                u.setEmail(rs.getString("email"));
+                u.setSenha_hash(rs.getString("senha_hash"));
+                usuarios.add(u);
+            }
+        }
+        return usuarios;
+    }
+
+    public String buscarNomeProfessorPorDisciplina(int disciplinaId, int semestreLetivoId) throws SQLException {
+        String sql = """
+            SELECT u.nome
+            FROM atribuicao_professor ap
+            JOIN usuario u ON u.id_usuario = ap.professor_id
+            WHERE ap.disciplina_id = ? AND ap.semestre_letivo_id = ?
+            """;
+
+        try (Connection con = DatabaseConnection.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setInt(1, disciplinaId);
+            ps.setInt(2, semestreLetivoId);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getString("nome") : "-";
+            }
+        }
     }
 }
